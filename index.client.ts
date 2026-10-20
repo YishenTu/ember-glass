@@ -28,29 +28,38 @@ const colors = {
 const EDGE = "#4a3a2acc"; // button/input borders and the user prompt bubble
 const HIGHLIGHT = "#3d322b"; // highlighted item in a popup, hovered diff pill
 const CLOSE_HOVER = "#4a3a2a"; // hovered tab close (x)
+const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it from the clear background)
 const SELECTED_ROW = `${colors.foreground}14`; // selected sidebar row (8% text color)
 
 // One tint for the whole window (Ghostty uses 0.7 opacity).
 const GLASS_TINT = "rgba(8, 7, 6, 0.55)";
 
 // Popups (menus, tooltips, pickers, Cmd+P, modals, hover cards) are frosted
-// glass: a heavily blurred copy of the app behind them plus a light tint.
+// glass: see-through like the panels, with whatever app content is behind
+// them heavily blurred.
 //
 // A plain CSS blur() doesn't work here: the page itself is see-through, so
 // Chromium's blurred copy is also see-through and the sharp text behind still
-// shows. POPUP_FILTER is an SVG filter that blurs, then lays the result on a
-// solid dark base (POPUP_BASE), which hides the sharp copy.
-// For fully solid popups, set POPUP_BG to colors.control.
-const POPUP_BG = "rgba(42, 35, 32, 0.45)";
+// shows. POPUP_FILTER is an SVG filter that instead:
+//   1. builds a mask of where there is content behind the popup (pixels more
+//      opaque than the window tint), widened by POPUP_MASK_GROW px,
+//   2. paints an opaque, blurred copy only inside that mask.
+// Empty areas stay clear (desktop shows through); text becomes a soft smudge.
+const POPUP_BG = "rgba(42, 35, 32, 0.25)"; // tint on top; colors.control = solid
 const POPUP_BLUR = 16; // blur radius in px (SVG stdDeviation; ~2x that in CSS blur())
-const POPUP_BASE = "#16130f";
+const POPUP_MASK_GROW = 6;
 const POPUP_FILTER = "url(#ember-frost)";
 const FROST_ID = "ember-glass-frost";
+// Mask threshold: the window tint has alpha 0.55; content pushes it toward 1.
+// Alpha 0.57 -> 0, 0.61+ -> 1.
 const FROST_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute">
   <filter id="ember-frost" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feComponentTransfer in="SourceGraphic" result="hasContent"><feFuncA type="linear" slope="25" intercept="-14.25"/></feComponentTransfer>
+    <feMorphology in="hasContent" operator="dilate" radius="${POPUP_MASK_GROW}" result="grown"/>
+    <feGaussianBlur in="grown" stdDeviation="4" result="mask"/>
     <feGaussianBlur in="SourceGraphic" stdDeviation="${POPUP_BLUR}" edgeMode="duplicate" result="blur"/>
-    <feFlood flood-color="${POPUP_BASE}" result="base"/>
-    <feComposite in="blur" in2="base" operator="over"/>
+    <feComponentTransfer in="blur" result="opaqueBlur"><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>
+    <feComposite in="opaqueBlur" in2="mask" operator="in"/>
   </filter>
 </svg>`;
 
@@ -68,8 +77,14 @@ ${S} {
   --colors-surface-workspace: transparent;
   /* Selected sidebar row: translucent instead of the solid control color. */
   --colors-surface-sidebar-selected: ${SELECTED_ROW};
+  /* Paseo uses \`background\` (fully clear here) for text/icons on accent buttons. */
+  --colors-accent-foreground: ${ON_ACCENT};
+  --colors-primary-foreground: ${ON_ACCENT};
   background-color: ${GLASS_TINT} !important;
 }
+/* Icons on accent buttons get that color as a resolved value (stroke="#1a161400"), not a variable. */
+${S} [stroke="${colors.background}"] { stroke: ${ON_ACCENT} !important; }
+${S} :is(button, [role="button"]) [fill="${colors.background}"] { fill: ${ON_ACCENT} !important; }
 /* React Navigation paints an opaque light card behind every screen. */
 ${S} [style*="background-color: rgb(242, 242, 242)"] { background-color: transparent !important; }
 /* Message input box: no extra layer, but keep its border (only elements that already have a border width show it). */
@@ -78,11 +93,12 @@ ${S} [data-testid="message-input-root"] div:has(textarea) { background-color: tr
 ${S} [data-testid="user-message"] > div > div:not([data-testid]):first-child { background-color: ${EDGE} !important; }
 /* Frosted popups. Most are found and tagged by frostPopups() below. Ones that
    render inside the app tree are listed by hand: the workspace hover card, the
-   / and @ menu above the message input (its card is two levels down), and the
-   diff stat pill above the input. */
+   context window hover panel, the / and @ menu above the message input (its
+   card is two levels down), and the diff stat pill above the input. */
 ${S} :is(
   .${FROSTED},
   [data-testid="workspace-hover-card"],
+  [data-testid="context-window-details"],
   [data-testid="composer-autocomplete-popover"] > div > div,
   [data-testid="composer-diff-stat-pill"]
 ) {
@@ -99,6 +115,8 @@ ${S} :is(
   div:has(> button[data-testid$="-caret"]),
   div:has(> [data-testid="workspace-scripts-button"])
 ) { --colors-border: ${EDGE}; --colors-border-accent: ${EDGE}; }
+/* Context window meter in the composer: its ring track (first circle) uses the hidden border color. */
+${S} [data-testid="context-window-meter"] svg circle:first-of-type { stroke: ${EDGE} !important; }
 /* Slightly heavier text: macOS default smoothing (Paseo forces the thinner
    "antialiased") plus a hairline stroke. Keeps the normal/medium/bold hierarchy. */
 ${S}, ${S} * {

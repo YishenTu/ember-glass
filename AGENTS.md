@@ -29,14 +29,16 @@ Patch changes (`apply`/`restore`) need a Paseo restart (Cmd+Q, reopen). Ask the 
 - **Single glass layer.** Paseo nests ~10 panels that each paint `background`; any alpha there stacks into a solid color. So `background` is fully clear and one tint (`GLASS_TINT`) is painted on `<html>`. Don't add alpha to nested surfaces.
 - **CSS variables.** Unistyles emits theme variables on `:root.pluginDark` (`--colors-surface-workspace`, `--colors-border`, `--colors-surface2`, …). Override them by re-scoping the variable on a more specific selector rather than overriding `background-color` everywhere.
 - **Scope.** Every rule starts with `${S}` (`html.pluginDark.ember-glass`), so styles only apply while this theme is selected. Keep that for new rules.
-- **Popups** are frosted (`POPUP_BG` + `backdrop-filter: url(#ember-frost)`):
+- **Popups** are frosted (`POPUP_BG` tint + `backdrop-filter: url(#ember-frost)`):
   - `frostPopups()` watches only body-level layers outside `#root` (`#overlay-root` for menus/tooltips, separate divs for modals) and tags the outermost rounded-or-shadowed, non-full-window box with `.ember-frosted`.
-  - Popups that render inside `#root` must be listed by hand in the frosted `:is(...)` rule (hover card, `/` `@` autocomplete, diff stat pill).
+  - Popups that render inside `#root` must be listed by hand in the frosted `:is(...)` rule (hover card, context window panel, `/` `@` autocomplete, diff stat pill).
 - **Selectors** prefer `data-testid`. To find testIDs: `grep -rhoE 'testID:"[^"]*"' /Applications/Paseo.app/Contents/Resources/app-dist | sort -u`.
 
 ## Gotchas (learned the hard way)
 
-- **`backdrop-filter: blur()` doesn't hide content here.** In the transparent window the blurred copy is itself translucent and the sharp original shows through. That's why popups use the SVG filter that composites the blur over a solid `POPUP_BASE`.
+- **`backdrop-filter: blur()` doesn't hide content here.** In the transparent window the blurred copy is itself translucent and the sharp original shows through. Popups use an SVG filter (`FROST_SVG`) that masks where content sits behind the popup (backdrop alpha above the 0.55 window tint), and paints an opaque blurred copy only there. Empty areas stay see-through. If `GLASS_TINT`'s alpha changes, update the mask threshold in `FROST_SVG`.
+- **`:is()` takes the specificity of its most specific argument**, so the frosted-popup rule is stronger than it looks. Test overrides need extra specificity to win.
+- The DevTools screenshot shows see-through areas as mid-grey; the real window is much darker, so dark blur smudges look harsher in screenshots than on screen.
 - React Navigation paints an inline opaque `rgb(242, 242, 242)` card behind screens; the CSS overrides it.
 - Paseo sets `* { scrollbar-width: thin }`, which wins over `::-webkit-scrollbar`; reset it first.
 - Hover "scrims" (SVG gradients behind sidebar `⋯` / tab `×`) assume opaque panels and look like smudges on glass; they're hidden.
