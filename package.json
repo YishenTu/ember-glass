@@ -1,0 +1,22 @@
+{
+  "name": "ember-glass",
+  "private": true,
+  "version": "0.1.0",
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.ts"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "patch:apply": "python3 scripts/transparent-window.py apply",
+    "patch:restore": "python3 scripts/transparent-window.py restore",
+    "patch:status": "python3 scripts/transparent-window.py status"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.12.0",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "typescript": "^5.9.3"
+  }
+}

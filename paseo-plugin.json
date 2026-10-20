@@ -1,0 +1,8 @@
+{
+  "id": "ember-glass",
+  "name": "Ember Glass",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.12.0"
+  }
+}
