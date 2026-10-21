@@ -33,8 +33,10 @@ const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it f
 const STOP_COLOR = colors.mutedForeground;
 const SELECTED_ROW = `${colors.foreground}14`; // selected sidebar row (8% text color)
 
-// One tint for the whole window (Ghostty uses 0.7 opacity).
-const GLASS_TINT = "rgba(8, 7, 6, 0.55)";
+// One tint for the whole window (Ghostty uses 0.7 opacity). The popup frost
+// mask threshold is derived from GLASS_ALPHA, so change it here only.
+const GLASS_ALPHA = 0.55;
+const GLASS_TINT = `rgba(8, 7, 6, ${GLASS_ALPHA})`;
 
 // Popups (menus, tooltips, pickers, Cmd+P, modals, hover cards) are frosted
 // glass: see-through like the panels, with whatever app content is behind
@@ -56,13 +58,16 @@ const POPUP_MASK_GROW = 16; // keep >= 2x feather, or sharp text leaks at patch 
 const POPUP_MASK_FEATHER = 8;
 const POPUP_PATCH_TONE = "#2e2621";
 const POPUP_PATCH_MIX = 0.35; // share of the blurred content in a patch (rest is tone)
-const POPUP_FILTER = "url(#ember-frost)";
-const FROST_ID = "ember-glass-frost";
-// Mask threshold: the window tint has alpha 0.55; content pushes it toward 1.
-// Alpha 0.57 -> 0, 0.61+ -> 1.
+const FILTER_ID = "ember-frost";
+const POPUP_FILTER = `url(#${FILTER_ID})`;
+const FROST_ID = "ember-glass-frost"; // the div holding the SVG
+// Mask threshold: empty glass has alpha GLASS_ALPHA; content pushes it toward 1.
+// Alpha GLASS_ALPHA + 0.02 -> 0, GLASS_ALPHA + 0.06 and up -> 1.
+const MASK_SLOPE = 25;
+const MASK_INTERCEPT = -Math.round(MASK_SLOPE * (GLASS_ALPHA + 0.02) * 100) / 100;
 const FROST_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute">
-  <filter id="ember-frost" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <feComponentTransfer in="SourceGraphic" result="hasContent"><feFuncA type="linear" slope="25" intercept="-14.25"/></feComponentTransfer>
+  <filter id="${FILTER_ID}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feComponentTransfer in="SourceGraphic" result="hasContent"><feFuncA type="linear" slope="${MASK_SLOPE}" intercept="${MASK_INTERCEPT}"/></feComponentTransfer>
     <feMorphology in="hasContent" operator="dilate" radius="${POPUP_MASK_GROW}" result="grown"/>
     <feGaussianBlur in="grown" stdDeviation="${POPUP_MASK_FEATHER}" result="mask"/>
     <feGaussianBlur in="SourceGraphic" stdDeviation="${POPUP_BLUR}" edgeMode="duplicate" result="blur"/>
@@ -80,6 +85,10 @@ const TEXT_STROKE = "0.15px";
 // theme (this one) is selected. Paseo puts `pluginDark` on <html> for that.
 const S = "html.pluginDark.ember-glass";
 const FROSTED = "ember-frosted";
+const SCRIM = "ember-scrim";
+// Popups live in body-level layers outside the app root: #overlay-root holds
+// menus, pickers and tooltips; every other layer is a modal (Cmd+P, host, help).
+const MODAL_LAYER = "body > div:not(#root):not(#overlay-root)";
 
 const GLASS_CSS = `
 /* Main and right panes use the same clear background as the left sidebar. */
@@ -109,23 +118,37 @@ ${S} [style*="background-color: rgb(242, 242, 242)"] { background-color: transpa
 ${S} [data-testid="message-input-root"] div:has(textarea) { background-color: transparent !important; border-color: ${EDGE} !important; }
 /* User prompt bubble: Paseo paints it with the border color, which is hidden. */
 ${S} [data-testid="user-message"] > div > div:not([data-testid]):first-child { background-color: ${EDGE} !important; }
-/* Frosted popups. Most are found and tagged by frostPopups() below. Ones that
-   render inside the app tree are listed by hand: the workspace hover card, the
-   context window hover panel, the / and @ menu above the message input (its
-   card is two levels down), and the diff stat pill above the input. */
+/* ---- Popups ----
+   Frosted popups. Those in popup layers (menus, tooltips, modals) are found
+   and tagged by frostPopups() below. Ones that render inside the app tree are
+   listed by hand: the workspace hover card, the context window hover panel,
+   the / and @ menu above the message input (its card is two levels down), and
+   the diff stat and subagents pills above the input. */
 ${S} :is(
   .${FROSTED},
   [data-testid="workspace-hover-card"],
   [data-testid="context-window-details"],
   [data-testid="composer-autocomplete-popover"] > div > div,
-  [data-testid="composer-diff-stat-pill"]
+  [data-testid="composer-diff-stat-pill"],
+  [data-testid="subagents-track-header"]
 ) {
   background-color: ${POPUP_BG} !important;
   backdrop-filter: ${POPUP_FILTER} !important;
   /* Highlighted items inside use surface2; lift it so it differs from the panel. */
   --colors-surface2: ${HIGHLIGHT};
 }
-${S} [data-testid="composer-diff-stat-pill"]:hover { background-color: ${HIGHLIGHT} !important; }
+${S} :is([data-testid="composer-diff-stat-pill"], [data-testid="subagents-track-header"]):hover { background-color: ${HIGHLIGHT} !important; }
+/* Modals dim the whole window with a 50% black layer. The
+   frost mask reads it as content and turns the popup solid as it fades in, so
+   frostPopups() tags it and it's cleared. */
+${S} .${SCRIM} { background-color: transparent !important; }
+/* Modals fade in from opacity 0. While their layer is translucent the browser
+   can't sample the window behind it, so the frost only kicks in after the fade
+   and the panel visibly changes look. Show them instantly instead. Menus and
+   tooltips (#overlay-root) keep theirs: they wait for the fade-out to finish
+   before unmounting, so without it old tooltips never go away. */
+${S} ${MODAL_LAYER} > div { animation: none !important; }
+/* ---- end popups ---- */
 /* Buttons (and split-button groups like Merge PR) keep their borders by re-scoping Paseo's border color variables. */
 ${S} :is(
   [role="button"],
@@ -133,6 +156,14 @@ ${S} :is(
   div:has(> button[data-testid$="-caret"]),
   div:has(> [data-testid="workspace-scripts-button"])
 ) { --colors-border: ${EDGE}; --colors-border-accent: ${EDGE}; }
+/* Expanded tool calls: thinking (and JSON/diff) details sit in a solid surface2
+   box while shell output uses the clear surface1; give them all surface1. */
+${S} [data-testid="tool-call-badge"] { --colors-surface2: ${colors.raised}; }
+/* Their scroll box is rounded on all sides; square it so it meets the header's
+   bottom border. The detail wrapper's own rounded, clipped bottom stays. */
+${S} [data-testid="tool-call-badge"] > button + div [style*="max-height"] { border-radius: 0 !important; }
+/* The expanded area's side/bottom border uses the hidden border color; match the header's. */
+${S} [data-testid="tool-call-badge"] > button + div { border-color: ${EDGE} !important; }
 /* Context window meter in the composer: its ring track (first circle) uses the hidden border color. */
 ${S} [data-testid="context-window-meter"] svg circle:first-of-type { stroke: ${EDGE} !important; }
 /* Slightly heavier text: macOS default smoothing (Paseo forces the thinner
@@ -177,8 +208,8 @@ const doc = win.document;
  * go into #overlay-root, modals (Cmd+P, usage, add project) into their own
  * body-level layer. In each, the popup itself is the outermost box with
  * rounded corners or a shadow that isn't full-window (full-window boxes are
- * dim backdrops). That box gets the FROSTED class; inner rows are left alone
- * so their hover/selection shading still works.
+ * dim backdrops, tagged SCRIM and cleared). That box gets the FROSTED class;
+ * inner rows are left alone so their hover/selection shading still works.
  *
  * Only those popup layers are watched, so the busy main app (e.g. a streaming
  * chat) never triggers this code.
@@ -190,10 +221,13 @@ function frostPopups(): () => void {
   const mark = (el: any, depth: number) => {
     if (depth > 12) return;
     const r = el.getBoundingClientRect();
-    const fullWindow = r.width >= win.innerWidth - 2 && r.height >= win.innerHeight - 2;
-    if (r.width > 0 && r.height > 0 && !fullWindow) {
+    if (r.width > 0 && r.height > 0) {
       const cs = win.getComputedStyle(el);
-      if (cs.borderTopLeftRadius !== "0px" || cs.boxShadow !== "none") {
+      const fullWindow = r.width >= win.innerWidth - 2 && r.height >= win.innerHeight - 2;
+      if (fullWindow) {
+        // A modal's dim backdrop (see SCRIM in GLASS_CSS).
+        if (cs.backgroundColor !== "rgba(0, 0, 0, 0)") el.classList.add(SCRIM);
+      } else if (cs.borderTopLeftRadius !== "0px" || cs.boxShadow !== "none") {
         el.classList.add(FROSTED);
         return;
       }
@@ -238,6 +272,7 @@ function frostPopups(): () => void {
     bodyObserver.disconnect();
     layerObserver.disconnect();
     for (const el of doc.querySelectorAll(`.${FROSTED}`)) el.classList.remove(FROSTED);
+    for (const el of doc.querySelectorAll(`.${SCRIM}`)) el.classList.remove(SCRIM);
   };
 }
 

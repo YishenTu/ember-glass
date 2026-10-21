@@ -21,7 +21,7 @@ Everything lives in `index.client.ts`. The main settings:
 | Setting | What it does |
 |---|---|
 | `colors` | Base palette (text, accent, panels) |
-| `GLASS_TINT` | Darkness/opacity of the window glass |
+| `GLASS_ALPHA`, `GLASS_TINT` | Opacity and color of the window glass |
 | `POPUP_BG`, `POPUP_BLUR` | Popup tint and blur strength |
 | `TEXT_STROKE` | Extra text weight |
 

@@ -32,11 +32,13 @@ Patch changes (`apply`/`restore`) need a Paseo restart (Cmd+Q, reopen). Ask the 
 - **Popups** are frosted (`POPUP_BG` tint + `backdrop-filter: url(#ember-frost)`):
   - `frostPopups()` watches only body-level layers outside `#root` (`#overlay-root` for menus/tooltips, separate divs for modals) and tags the outermost rounded-or-shadowed, non-full-window box with `.ember-frosted`.
   - Popups that render inside `#root` must be listed by hand in the frosted `:is(...)` rule (hover card, context window panel, `/` `@` autocomplete, diff stat pill).
+  - Modals (`MODAL_LAYER`: every body-level layer except `#root` and `#overlay-root`) get two extra fixes: their full-window dim backdrop is tagged `.ember-scrim` and cleared (the frost mask would read it as content and go solid), and their fade-in is disabled (a translucent ancestor hides the backdrop from the filter until the fade ends). Don't disable animations in `#overlay-root`: tooltips unmount only after their fade-out ends, so they'd pile up.
+  - All popup CSS lives in the `---- Popups ----` block of `GLASS_CSS`.
 - **Selectors** prefer `data-testid`. To find testIDs: `grep -rhoE 'testID:"[^"]*"' /Applications/Paseo.app/Contents/Resources/app-dist | sort -u`.
 
 ## Gotchas (learned the hard way)
 
-- **`backdrop-filter: blur()` doesn't hide content here.** In the transparent window the blurred copy is itself translucent and the sharp original shows through. Popups use an SVG filter (`FROST_SVG`) that masks where content sits behind the popup (backdrop alpha above the 0.55 window tint), and paints an opaque blurred copy only there. Empty areas stay see-through. If `GLASS_TINT`'s alpha changes, update the mask threshold in `FROST_SVG`.
+- **`backdrop-filter: blur()` doesn't hide content here.** In the transparent window the blurred copy is itself translucent and the sharp original shows through. Popups use an SVG filter (`FROST_SVG`) that masks where content sits behind the popup (backdrop alpha above the 0.55 window tint), and paints an opaque blurred copy only there. Empty areas stay see-through. The threshold is derived from `GLASS_ALPHA`; change the window tint's opacity there, not in `GLASS_TINT`.
 - **`:is()` takes the specificity of its most specific argument**, so the frosted-popup rule is stronger than it looks. Test overrides need extra specificity to win.
 - The DevTools screenshot shows see-through areas as mid-grey; the real window is much darker, so dark blur smudges look harsher in screenshots than on screen.
 - React Navigation paints an inline opaque `rgb(242, 242, 242)` card behind screens; the CSS overrides it.
