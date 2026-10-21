@@ -30,7 +30,9 @@ const HIGHLIGHT = "#3d322b"; // highlighted item in a popup, hovered diff pill
 // Extra space above the top bar (sidebar, workspace header, right panel tabs).
 // The macOS window buttons move down by the same amount.
 const TOP_GAP = 6;
-const TAB_FADE = [22, 38]; // tab title fade under the close (x): clear for the first px, solid from the second
+const TAB_FADE = [22, 38];
+// Tab close (x) buttons: "workspace-agent-close-<id>", "workspace-pull_request-close", ...
+const TAB_CLOSE = `button:is([data-testid^="workspace-"][data-testid*="-close-"], [data-testid^="workspace-"][data-testid$="-close"])`; // tab title fade under the close (x): clear for the first px, solid from the second
 const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it from the clear background)
 // Stop button while an agent runs: hollow ring + square, same color as the composer controls (model, effort, mode).
 const STOP_COLOR = colors.mutedForeground;
@@ -87,9 +89,10 @@ const TEXT_STROKE = "0.15px";
 // Every rule is scoped to this, so the styles only apply while a plugin dark
 // theme (this one) is selected. Paseo puts `pluginDark` on <html> for that.
 const S = "html.pluginDark.ember-glass";
-const FROSTED = "ember-frosted";
-const SCRIM = "ember-scrim";
-// An attribute, not a class: React rewrites a row's class on hover, dropping ours.
+// Tags set by frostPopups(). Attributes, not classes: React rewrites an
+// element's class whenever its style changes (hover, repositioning), dropping ours.
+const FROSTED = "data-ember-frosted";
+const SCRIM = "data-ember-scrim";
 const ROW = "data-ember-row";
 const ROW_INSET = 4; // gap between a highlighted popup row and the popup edge (Paseo's menus use 4)
 const ROW_RADIUS = 6;
@@ -132,7 +135,7 @@ ${S} [data-testid="user-message"] > div > div:not([data-testid]):first-child { b
    the / and @ menu above the message input (its card is two levels down), and
    the diff stat and subagents pills above the input. */
 ${S} :is(
-  .${FROSTED},
+  [${FROSTED}],
   [data-testid="workspace-hover-card"],
   [data-testid="context-window-details"],
   [data-testid="composer-autocomplete-popover"] > div > div,
@@ -141,12 +144,26 @@ ${S} :is(
 ) {
   background-color: ${POPUP_BG} !important;
   backdrop-filter: ${POPUP_FILTER} !important;
-  /* Highlighted items inside use surface2; lift it so it differs from the panel. */
+  /* Highlighted items inside use surface2, and selected segments (e.g. Used /
+     Remaining) use surface3, which is the hidden border color. Lift both. */
   --colors-surface2: ${HIGHLIGHT};
+  --colors-surface3: ${HIGHLIGHT};
 }
 /* Highlighted rows. Paseo's dropdown menus inset them as rounded HIGHLIGHT pills;
    pickers (model, thinking, mode, host) and Cmd+P paint full-width surface1
    bars instead. frostPopups() tags those full-width rows so they match. */
+/* Same EDGE border as the pills. An inset outline: it follows the corner radius,
+   sits on top of any border the popup already has (often transparent), and
+   never changes the popup's size or position. The pills already have the border. */
+${S} :is(
+  [${FROSTED}],
+  [data-testid="workspace-hover-card"],
+  [data-testid="context-window-details"],
+  [data-testid="composer-autocomplete-popover"] > div > div
+) {
+  outline: 1px solid ${EDGE} !important;
+  outline-offset: -1px !important;
+}
 ${S} [${ROW}] {
   /* Clip instead of margins: tagging can land after the popup is drawn, and
      margins would then shift the row's content sideways. */
@@ -157,7 +174,7 @@ ${S} :is([data-testid="composer-diff-stat-pill"], [data-testid="subagents-track-
 /* Modals dim the whole window with a 50% black layer. The
    frost mask reads it as content and turns the popup solid as it fades in, so
    frostPopups() tags it and it's cleared. */
-${S} .${SCRIM} { background-color: transparent !important; }
+${S} [${SCRIM}] { background-color: transparent !important; }
 /* Modals fade in from opacity 0. While their layer is translucent the browser
    can't sample the window behind it, so the frost only kicks in after the fade
    and the panel visibly changes look. Show them instantly instead. Menus and
@@ -180,6 +197,9 @@ ${S} [data-testid="tool-call-badge"] { --colors-surface2: ${colors.raised}; }
 ${S} [data-testid="tool-call-badge"] > button + div [style*="max-height"] { border-radius: 0 !important; }
 /* The expanded area's side/bottom border uses the hidden border color; match the header's. */
 ${S} [data-testid="tool-call-badge"] > button + div { border-color: ${EDGE} !important; }
+/* Switch (toggle) track when off: Paseo paints it with the clear border color,
+   leaving only the white knob. */
+${S} [role="switch"][aria-checked="false"] > div > div { background-color: ${EDGE} !important; }
 /* Context window meter in the composer: its ring track (first circle) uses the hidden border color. */
 ${S} [data-testid="context-window-meter"] svg circle:first-of-type { stroke: ${EDGE} !important; }
 /* Slightly heavier text: macOS default smoothing (Paseo forces the thinner
@@ -193,13 +213,13 @@ ${S}, ${S} * {
 ${S} div:has(> svg linearGradient[id^="trailing-action-scrim-"]) { display: none !important; }
 /* Tab close (x) button: styled like the sidebar "..." button (clear, control
    color on hover). It sits over the end of the tab title, so while it shows
-   (active or hovered tab) the title fades out underneath it instead. */
-${S} button[data-testid^="workspace-"][data-testid*="-close-"] {
+   (on hover) the title fades out underneath it instead. */
+${S} ${TAB_CLOSE} {
   background-color: transparent !important;
   border-radius: 6px !important;
 }
-${S} button[data-testid^="workspace-"][data-testid*="-close-"]:hover { background-color: ${colors.control} !important; }
-${S} div:has(> div > button[data-testid^="workspace-"][data-testid*="-close-"]):is(:hover, :has(> [aria-selected="true"])) > button [dir="auto"] {
+${S} ${TAB_CLOSE}:hover { background-color: ${colors.control} !important; }
+${S} div:has(> div > ${TAB_CLOSE}):hover > button [dir="auto"] {
   mask-image: linear-gradient(to left, transparent 0 ${TAB_FADE[0]}px, #000 ${TAB_FADE[1]}px);
 }
 /* Hide vertical scrollbars (scrolling still works; horizontal bars stay).
@@ -220,7 +240,7 @@ ${S} body::before {
 ${S} [data-testid^="workspace-tab-"][aria-selected="true"] {
   background-color: transparent !important;
   border-radius: 0 !important;
-  box-shadow: inset 0 -2px 0 ${colors.accent};
+  box-shadow: 0 2px 0 ${colors.accent}; /* 2px line just below the tab, 2px clear of the label */
 }
 `;
 
@@ -236,7 +256,7 @@ const doc = win.document;
  * go into #overlay-root, modals (Cmd+P, usage, add project) into their own
  * body-level layer. In each, the popup itself is the outermost box with
  * rounded corners or a shadow that isn't full-window (full-window boxes are
- * dim backdrops, tagged SCRIM and cleared). That box gets the FROSTED class.
+ * dim backdrops, tagged SCRIM and cleared). That box gets the FROSTED tag.
  * Inside it, buttons spanning the full width are list rows; they get ROW so
  * their highlight is inset like Paseo's dropdown menu items.
  *
@@ -255,9 +275,9 @@ function frostPopups(): () => void {
       const fullWindow = r.width >= win.innerWidth - 2 && r.height >= win.innerHeight - 2;
       if (fullWindow) {
         // A modal's dim backdrop (see SCRIM in GLASS_CSS).
-        if (cs.backgroundColor !== "rgba(0, 0, 0, 0)") el.classList.add(SCRIM);
+        if (cs.backgroundColor !== "rgba(0, 0, 0, 0)") el.setAttribute(SCRIM, "");
       } else if (cs.borderTopLeftRadius !== "0px" || cs.boxShadow !== "none") {
-        el.classList.add(FROSTED);
+        el.setAttribute(FROSTED, "");
         for (const row of el.querySelectorAll(`[role="button"]:not([${ROW}])`)) {
           // Layout widths: the popup may still be mid scale-in animation.
           if (row.offsetWidth >= el.clientWidth - 2) row.setAttribute(ROW, "");
@@ -284,7 +304,7 @@ function frostPopups(): () => void {
   };
 
   // One observer for the popup layers' contents, one for layers being added.
-  const watched = new Set<any>();
+  const watched = new WeakSet<any>(); // weak: closed modal layers must not stay in memory
   const layerObserver = new win.MutationObserver(schedule);
   const watchLayers = () => {
     for (const layer of layers()) {
@@ -304,9 +324,9 @@ function frostPopups(): () => void {
   return () => {
     bodyObserver.disconnect();
     layerObserver.disconnect();
-    for (const el of doc.querySelectorAll(`.${FROSTED}`)) el.classList.remove(FROSTED);
-    for (const el of doc.querySelectorAll(`.${SCRIM}`)) el.classList.remove(SCRIM);
-    for (const el of doc.querySelectorAll(`[${ROW}]`)) el.removeAttribute(ROW);
+    for (const tag of [FROSTED, SCRIM, ROW]) {
+      for (const el of doc.querySelectorAll(`[${tag}]`)) el.removeAttribute(tag);
+    }
   };
 }
 

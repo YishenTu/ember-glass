@@ -29,11 +29,11 @@ Patch changes (`apply`/`restore`) need a Paseo restart (Cmd+Q, reopen). Ask the 
 - **Single glass layer.** Paseo nests ~10 panels that each paint `background`; any alpha there stacks into a solid color. So `background` is fully clear and one tint (`GLASS_TINT`) is painted on `<html>`. Don't add alpha to nested surfaces.
 - **CSS variables.** Unistyles emits theme variables on `:root.pluginDark` (`--colors-surface-workspace`, `--colors-border`, `--colors-surface2`, …). Override them by re-scoping the variable on a more specific selector rather than overriding `background-color` everywhere.
 - **Scope.** Every rule starts with `${S}` (`html.pluginDark.ember-glass`), so styles only apply while this theme is selected. Keep that for new rules.
-- **Popups** are frosted (`POPUP_BG` tint + `backdrop-filter: url(#ember-frost)`):
-  - `frostPopups()` watches only body-level layers outside `#root` (`#overlay-root` for menus/tooltips, separate divs for modals) and tags the outermost rounded-or-shadowed, non-full-window box with `.ember-frosted`.
+- **Popups** are frosted (`POPUP_BG` tint + `backdrop-filter: url(#ember-frost)`) with an `EDGE` border (an inset outline, so it never shifts layout):
+  - `frostPopups()` watches only body-level layers outside `#root` (`#overlay-root` for menus/tooltips, separate divs for modals) and tags the outermost rounded-or-shadowed, non-full-window box with `[data-ember-frosted]`.
   - Popups that render inside `#root` must be listed by hand in the frosted `:is(...)` rule (hover card, context window panel, `/` `@` autocomplete, diff stat pill).
-  - Modals (`MODAL_LAYER`: every body-level layer except `#root` and `#overlay-root`) get two extra fixes: their full-window dim backdrop is tagged `.ember-scrim` and cleared (the frost mask would read it as content and go solid), and their fade-in is disabled (a translucent ancestor hides the backdrop from the filter until the fade ends). Don't disable animations in `#overlay-root`: tooltips unmount only after their fade-out ends, so they'd pile up.
-  - Inside a frosted popup, `[role=button]` rows spanning its full width (pickers, Cmd+P) get a `data-ember-row` attribute so their highlight is inset and rounded like Paseo's dropdown menu items. Tag with attributes, not classes, on anything that changes on hover: React rewrites `class` and drops ours.
+  - Modals (`MODAL_LAYER`: every body-level layer except `#root` and `#overlay-root`) get two extra fixes: their full-window dim backdrop is tagged `[data-ember-scrim]` and cleared (the frost mask would read it as content and go solid), and their fade-in is disabled (a translucent ancestor hides the backdrop from the filter until the fade ends). Don't disable animations in `#overlay-root`: tooltips unmount only after their fade-out ends, so they'd pile up.
+  - Inside a frosted popup, `[role=button]` rows spanning its full width (pickers, Cmd+P) get a `data-ember-row` attribute so their highlight is inset and rounded like Paseo's dropdown menu items. All tags are attributes, not classes: React rewrites `class` whenever an element's style changes (hover, repositioning) and drops ours.
   - All popup CSS lives in the `---- Popups ----` block of `GLASS_CSS`.
 - **Selectors** prefer `data-testid`. To find testIDs: `grep -rhoE 'testID:"[^"]*"' /Applications/Paseo.app/Contents/Resources/app-dist | sort -u`.
 
@@ -64,7 +64,7 @@ Originals are kept as `*.orig`; `apply` always starts from them. If a Paseo upda
 
 ```sh
 open -a Paseo --args --remote-debugging-port=9333   # Paseo must be fully quit first
-node scripts/cdp-eval.mjs 'document.querySelectorAll(".ember-frosted").length'
+node scripts/cdp-eval.mjs 'document.querySelectorAll("[data-ember-frosted]").length'
 ```
 
 Check a change by evaluating `getComputedStyle(...)` on the target, or capture a screenshot via CDP `Page.captureScreenshot`. Always verify visually for anything involving transparency or blur — computed styles alone have misled before.
