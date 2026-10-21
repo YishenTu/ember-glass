@@ -33,8 +33,11 @@ Patch changes (`apply`/`restore`) need a Paseo restart (Cmd+Q, reopen). Ask the 
   - `frostPopups()` watches only body-level layers outside `#root` (`#overlay-root` for menus/tooltips, separate divs for modals) and tags the outermost rounded-or-shadowed, non-full-window box with `.ember-frosted`.
   - Popups that render inside `#root` must be listed by hand in the frosted `:is(...)` rule (hover card, context window panel, `/` `@` autocomplete, diff stat pill).
   - Modals (`MODAL_LAYER`: every body-level layer except `#root` and `#overlay-root`) get two extra fixes: their full-window dim backdrop is tagged `.ember-scrim` and cleared (the frost mask would read it as content and go solid), and their fade-in is disabled (a translucent ancestor hides the backdrop from the filter until the fade ends). Don't disable animations in `#overlay-root`: tooltips unmount only after their fade-out ends, so they'd pile up.
+  - Inside a frosted popup, `[role=button]` rows spanning its full width (pickers, Cmd+P) get a `data-ember-row` attribute so their highlight is inset and rounded like Paseo's dropdown menu items. Tag with attributes, not classes, on anything that changes on hover: React rewrites `class` and drops ours.
   - All popup CSS lives in the `---- Popups ----` block of `GLASS_CSS`.
 - **Selectors** prefer `data-testid`. To find testIDs: `grep -rhoE 'testID:"[^"]*"' /Applications/Paseo.app/Contents/Resources/app-dist | sort -u`.
+
+- **Top gap.** `TOP_GAP` pads `#root` (every pane has its own fixed 36px header, so padding them one by one is fragile). `liftWindowButtons()` moves the macOS traffic lights by the same amount via `paseoDesktop.window.getCurrentWindow().updateChrome({ trafficLightOffsetY })`; Paseo resets it to -4 on theme changes, so it re-applies after `<html>` class changes.
 
 ## Gotchas (learned the hard way)
 

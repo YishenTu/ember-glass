@@ -10,7 +10,7 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 // How Paseo maps these:
 //   background      -> app root, sidebar, terminal (surface0)
 //   raised          -> workspace pane, hover rows (surface1)
-//   control         -> inputs, selected rows, tab close chip (surface2)
+//   control         -> inputs, selected rows, hovered small buttons (surface2)
 //   border          -> borders and pressed states (surface3)
 //   ring            -> focus ring and extra-muted text, so keep it opaque
 const colors = {
@@ -27,7 +27,10 @@ const colors = {
 // Extra shades used by the CSS below.
 const EDGE = "#4a3a2acc"; // button/input borders and the user prompt bubble
 const HIGHLIGHT = "#3d322b"; // highlighted item in a popup, hovered diff pill
-const CLOSE_HOVER = "#4a3a2a"; // hovered tab close (x)
+// Extra space above the top bar (sidebar, workspace header, right panel tabs).
+// The macOS window buttons move down by the same amount.
+const TOP_GAP = 6;
+const TAB_FADE = [22, 38]; // tab title fade under the close (x): clear for the first px, solid from the second
 const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it from the clear background)
 // Stop button while an agent runs: hollow ring + square, same color as the composer controls (model, effort, mode).
 const STOP_COLOR = colors.mutedForeground;
@@ -86,6 +89,10 @@ const TEXT_STROKE = "0.15px";
 const S = "html.pluginDark.ember-glass";
 const FROSTED = "ember-frosted";
 const SCRIM = "ember-scrim";
+// An attribute, not a class: React rewrites a row's class on hover, dropping ours.
+const ROW = "data-ember-row";
+const ROW_INSET = 4; // gap between a highlighted popup row and the popup edge (Paseo's menus use 4)
+const ROW_RADIUS = 6;
 // Popups live in body-level layers outside the app root: #overlay-root holds
 // menus, pickers and tooltips; every other layer is a modal (Cmd+P, host, help).
 const MODAL_LAYER = "body > div:not(#root):not(#overlay-root)";
@@ -137,6 +144,15 @@ ${S} :is(
   /* Highlighted items inside use surface2; lift it so it differs from the panel. */
   --colors-surface2: ${HIGHLIGHT};
 }
+/* Highlighted rows. Paseo's dropdown menus inset them as rounded HIGHLIGHT pills;
+   pickers (model, thinking, mode, host) and Cmd+P paint full-width surface1
+   bars instead. frostPopups() tags those full-width rows so they match. */
+${S} [${ROW}] {
+  /* Clip instead of margins: tagging can land after the popup is drawn, and
+     margins would then shift the row's content sideways. */
+  clip-path: inset(0 ${ROW_INSET}px round ${ROW_RADIUS}px);
+  --colors-surface1: ${HIGHLIGHT};
+}
 ${S} :is([data-testid="composer-diff-stat-pill"], [data-testid="subagents-track-header"]):hover { background-color: ${HIGHLIGHT} !important; }
 /* Modals dim the whole window with a 50% black layer. The
    frost mask reads it as content and turns the popup solid as it fades in, so
@@ -175,19 +191,31 @@ ${S}, ${S} * {
 /* Hover fades behind the sidebar "..." and tab close buttons assume opaque
    panels; on glass they show as a dark smudge, so drop them. */
 ${S} div:has(> svg linearGradient[id^="trailing-action-scrim-"]) { display: none !important; }
-/* Tab close (x) button: solid chip with a padding ring so text under it can't show through. */
+/* Tab close (x) button: styled like the sidebar "..." button (clear, control
+   color on hover). It sits over the end of the tab title, so while it shows
+   (active or hovered tab) the title fades out underneath it instead. */
 ${S} button[data-testid^="workspace-"][data-testid*="-close-"] {
-  background-color: ${colors.control} !important;
-  box-shadow: 0 0 0 3px ${colors.control};
-  border-radius: 4px !important;
+  background-color: transparent !important;
+  border-radius: 6px !important;
 }
-${S} button[data-testid^="workspace-"][data-testid*="-close-"]:hover { background-color: ${CLOSE_HOVER} !important; }
+${S} button[data-testid^="workspace-"][data-testid*="-close-"]:hover { background-color: ${colors.control} !important; }
+${S} div:has(> div > button[data-testid^="workspace-"][data-testid*="-close-"]):is(:hover, :has(> [aria-selected="true"])) > button [dir="auto"] {
+  mask-image: linear-gradient(to left, transparent 0 ${TAB_FADE[0]}px, #000 ${TAB_FADE[1]}px);
+}
 /* Hide vertical scrollbars (scrolling still works; horizontal bars stay).
    Paseo's "* { scrollbar-width: thin }" would override ::-webkit-scrollbar, so reset it. */
 ${S} * { scrollbar-width: auto !important; scrollbar-color: auto !important; }
 ${S} ::-webkit-scrollbar { width: 0 !important; }
 ${S} [data-testid="workspace-overlay-scrollbar"],
 ${S} .xterm .xterm-scrollbar.vertical { display: none !important; }
+/* Top bar breathing room: every pane has its own fixed 36px header, so instead
+   of padding each one, the whole app starts TOP_GAP lower. The glass behind the
+   gap looks the same as the headers. The gap stays a window drag area. */
+${S} #root { box-sizing: border-box; padding-top: ${TOP_GAP}px; }
+${S} body::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; height: ${TOP_GAP}px;
+  -webkit-app-region: drag;
+}
 /* Active workspace tab: copper underline instead of a filled background. */
 ${S} [data-testid^="workspace-tab-"][aria-selected="true"] {
   background-color: transparent !important;
@@ -208,8 +236,9 @@ const doc = win.document;
  * go into #overlay-root, modals (Cmd+P, usage, add project) into their own
  * body-level layer. In each, the popup itself is the outermost box with
  * rounded corners or a shadow that isn't full-window (full-window boxes are
- * dim backdrops, tagged SCRIM and cleared). That box gets the FROSTED class;
- * inner rows are left alone so their hover/selection shading still works.
+ * dim backdrops, tagged SCRIM and cleared). That box gets the FROSTED class.
+ * Inside it, buttons spanning the full width are list rows; they get ROW so
+ * their highlight is inset like Paseo's dropdown menu items.
  *
  * Only those popup layers are watched, so the busy main app (e.g. a streaming
  * chat) never triggers this code.
@@ -229,6 +258,10 @@ function frostPopups(): () => void {
         if (cs.backgroundColor !== "rgba(0, 0, 0, 0)") el.classList.add(SCRIM);
       } else if (cs.borderTopLeftRadius !== "0px" || cs.boxShadow !== "none") {
         el.classList.add(FROSTED);
+        for (const row of el.querySelectorAll(`[role="button"]:not([${ROW}])`)) {
+          // Layout widths: the popup may still be mid scale-in animation.
+          if (row.offsetWidth >= el.clientWidth - 2) row.setAttribute(ROW, "");
+        }
         return;
       }
     }
@@ -273,6 +306,48 @@ function frostPopups(): () => void {
     layerObserver.disconnect();
     for (const el of doc.querySelectorAll(`.${FROSTED}`)) el.classList.remove(FROSTED);
     for (const el of doc.querySelectorAll(`.${SCRIM}`)) el.classList.remove(SCRIM);
+    for (const el of doc.querySelectorAll(`[${ROW}]`)) el.removeAttribute(ROW);
+  };
+}
+
+/**
+ * Move the macOS window buttons down by TOP_GAP while a plugin dark theme is
+ * active, through the same window API Paseo uses (it sets an offset of -4
+ * whenever the theme's surface color changes, so re-apply after theme switches).
+ */
+function liftWindowButtons(): () => void {
+  const PASEO_OFFSET = -4;
+  // Center the buttons on the 36px header row: Electron places their top at
+  // 14 + offset and they're ~13.5px tall, so center = 20.75 + offset; the
+  // header center is 18 + TOP_GAP.
+  const OUR_OFFSET = Math.round(TOP_GAP - 2.75);
+  const chrome = win.paseoDesktop?.window?.getCurrentWindow?.();
+  if (typeof chrome?.updateChrome !== "function") return () => {};
+  const html = doc.documentElement;
+  let applied: number | null = null;
+  const set = (offset: number) => {
+    if (offset === applied) return;
+    applied = offset;
+    chrome.updateChrome({ trafficLightOffsetY: offset }).catch(() => {});
+  };
+  const sync = () => {
+    applied = null; // Paseo may have reset it
+    set(html.classList.contains("pluginDark") ? OUR_OFFSET : PASEO_OFFSET);
+  };
+  // Run after Paseo's own update for the same theme change.
+  let timer: any;
+  const later = () => {
+    win.clearTimeout(timer);
+    timer = win.setTimeout(sync, 300);
+  };
+  const observer = new win.MutationObserver(later);
+  observer.observe(html, { attributes: true, attributeFilter: ["class"] });
+  sync();
+  later();
+  return () => {
+    observer.disconnect();
+    win.clearTimeout(timer);
+    set(PASEO_OFFSET);
   };
 }
 
@@ -295,8 +370,10 @@ export default function contribute(client: PluginClientContext) {
   doc.head.appendChild(style);
   doc.documentElement.classList.add("ember-glass");
   const stopPopups = frostPopups();
+  const stopLift = liftWindowButtons();
   return () => {
     stopPopups();
+    stopLift();
     style.remove();
     frost.remove();
     doc.documentElement.classList.remove("ember-glass");
