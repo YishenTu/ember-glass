@@ -29,6 +29,8 @@ const EDGE = "#4a3a2acc"; // button/input borders and the user prompt bubble
 const HIGHLIGHT = "#3d322b"; // highlighted item in a popup, hovered diff pill
 const CLOSE_HOVER = "#4a3a2a"; // hovered tab close (x)
 const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it from the clear background)
+// Stop button while an agent runs: hollow ring + square, same color as the composer controls (model, effort, mode).
+const STOP_COLOR = colors.mutedForeground;
 const SELECTED_ROW = `${colors.foreground}14`; // selected sidebar row (8% text color)
 
 // One tint for the whole window (Ghostty uses 0.7 opacity).
@@ -43,11 +45,17 @@ const GLASS_TINT = "rgba(8, 7, 6, 0.55)";
 // shows. POPUP_FILTER is an SVG filter that instead:
 //   1. builds a mask of where there is content behind the popup (pixels more
 //      opaque than the window tint), widened by POPUP_MASK_GROW px,
-//   2. paints an opaque, blurred copy only inside that mask.
-// Empty areas stay clear (desktop shows through); text becomes a soft smudge.
+//   2. paints an opaque, blurred copy only inside that mask, mixed toward
+//      POPUP_PATCH_TONE (about what the see-through glass looks like) so the
+//      patches blend in instead of reading as dark smudges,
+//   3. feathers the mask edges (POPUP_MASK_FEATHER) so patches fade out.
+// Empty areas stay clear (desktop shows through); text becomes a soft blur.
 const POPUP_BG = "rgba(42, 35, 32, 0.25)"; // tint on top; colors.control = solid
 const POPUP_BLUR = 16; // blur radius in px (SVG stdDeviation; ~2x that in CSS blur())
-const POPUP_MASK_GROW = 6;
+const POPUP_MASK_GROW = 16; // keep >= 2x feather, or sharp text leaks at patch edges
+const POPUP_MASK_FEATHER = 8;
+const POPUP_PATCH_TONE = "#2e2621";
+const POPUP_PATCH_MIX = 0.35; // share of the blurred content in a patch (rest is tone)
 const POPUP_FILTER = "url(#ember-frost)";
 const FROST_ID = "ember-glass-frost";
 // Mask threshold: the window tint has alpha 0.55; content pushes it toward 1.
@@ -56,10 +64,12 @@ const FROST_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" 
   <filter id="ember-frost" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
     <feComponentTransfer in="SourceGraphic" result="hasContent"><feFuncA type="linear" slope="25" intercept="-14.25"/></feComponentTransfer>
     <feMorphology in="hasContent" operator="dilate" radius="${POPUP_MASK_GROW}" result="grown"/>
-    <feGaussianBlur in="grown" stdDeviation="4" result="mask"/>
+    <feGaussianBlur in="grown" stdDeviation="${POPUP_MASK_FEATHER}" result="mask"/>
     <feGaussianBlur in="SourceGraphic" stdDeviation="${POPUP_BLUR}" edgeMode="duplicate" result="blur"/>
     <feComponentTransfer in="blur" result="opaqueBlur"><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>
-    <feComposite in="opaqueBlur" in2="mask" operator="in"/>
+    <feFlood flood-color="${POPUP_PATCH_TONE}" result="tone"/>
+    <feComposite in="opaqueBlur" in2="tone" operator="arithmetic" k1="0" k2="${POPUP_PATCH_MIX}" k3="${1 - POPUP_PATCH_MIX}" k4="0" result="patch"/>
+    <feComposite in="patch" in2="mask" operator="in"/>
   </filter>
 </svg>`;
 
@@ -85,6 +95,14 @@ ${S} {
 /* Icons on accent buttons get that color as a resolved value (stroke="#1a161400"), not a variable. */
 ${S} [stroke="${colors.background}"] { stroke: ${ON_ACCENT} !important; }
 ${S} :is(button, [role="button"]) [fill="${colors.background}"] { fill: ${ON_ACCENT} !important; }
+/* Composer stop button (shown while an agent runs): hollow ring with a hollow
+   square inside, instead of Paseo's filled bright-red circle with a white square. */
+${S} [role="button"]:is([aria-label="Stop agent"], [aria-label="Canceling agent"], :has(> svg.lucide-square[fill="white"])) {
+  background-color: transparent !important;
+  box-shadow: inset 0 0 0 1.5px ${STOP_COLOR};
+  transform: scale(0.8); /* 20% smaller, layout unchanged */
+}
+${S} [role="button"] > svg.lucide-square[fill="white"], ${S} [role="button"] > svg.lucide-square[fill="white"] * { stroke: ${STOP_COLOR} !important; fill: none !important; }
 /* React Navigation paints an opaque light card behind every screen. */
 ${S} [style*="background-color: rgb(242, 242, 242)"] { background-color: transparent !important; }
 /* Message input box: no extra layer, but keep its border (only elements that already have a border width show it). */
