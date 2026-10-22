@@ -30,9 +30,10 @@ const HIGHLIGHT = "#3d322b"; // highlighted item in a popup, hovered diff pill
 // Extra space above the top bar (sidebar, workspace header, right panel tabs).
 // The macOS window buttons move down by the same amount.
 const TOP_GAP = 6;
-const TAB_FADE = [22, 38];
+// Fade under a trailing hover button (tab x, sidebar "..."): clear for the first px, solid from the second.
+const TRAILING_FADE = [22, 38];
 // Tab close (x) buttons: "workspace-agent-close-<id>", "workspace-pull_request-close", ...
-const TAB_CLOSE = `button:is([data-testid^="workspace-"][data-testid*="-close-"], [data-testid^="workspace-"][data-testid$="-close"])`; // tab title fade under the close (x): clear for the first px, solid from the second
+const TAB_CLOSE = `button:is([data-testid^="workspace-"][data-testid*="-close-"], [data-testid^="workspace-"][data-testid$="-close"])`;
 const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it from the clear background)
 // Stop button while an agent runs: hollow ring + square, same color as the composer controls (model, effort, mode).
 const STOP_COLOR = colors.mutedForeground;
@@ -220,7 +221,13 @@ ${S} ${TAB_CLOSE} {
 }
 ${S} ${TAB_CLOSE}:hover { background-color: ${colors.control} !important; }
 ${S} div:has(> div > ${TAB_CLOSE}):hover > button [dir="auto"] {
-  mask-image: linear-gradient(to left, transparent 0 ${TAB_FADE[0]}px, #000 ${TAB_FADE[1]}px);
+  mask-image: linear-gradient(to left, transparent 0 ${TRAILING_FADE[0]}px, #000 ${TRAILING_FADE[1]}px);
+}
+/* Sidebar workspace row: the hover "..." sits over the diff stat (+N -N).
+   Paseo hides it behind a gradient scrim (dropped above), so fade the stat out
+   under the button instead. The scrim element only exists while the button shows. */
+${S} div:has(> [data-testid="sidebar-workspace-trailing-scrim"]) > div:first-child {
+  mask-image: linear-gradient(to left, transparent 0 ${TRAILING_FADE[0]}px, #000 ${TRAILING_FADE[1]}px);
 }
 /* Hide vertical scrollbars (scrolling still works; horizontal bars stay).
    Paseo's "* { scrollbar-width: thin }" would override ::-webkit-scrollbar, so reset it. */
