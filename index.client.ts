@@ -25,7 +25,8 @@ const colors = {
 };
 
 // Extra shades used by the CSS below.
-const EDGE = "#4a3a2acc"; // button/input borders and the user prompt bubble
+const EDGE = "#4a3a2acc"; // button/input borders
+const USER_BUBBLE = "#000000"; // user prompt bubble
 const HIGHLIGHT = "#3d322b"; // highlighted item in a popup, hovered diff pill
 // Extra space above the top bar (sidebar, workspace header, right panel tabs).
 // The macOS window buttons move down by the same amount.
@@ -65,6 +66,7 @@ const POPUP_MASK_FEATHER = 8;
 const POPUP_PATCH_TONE = "#2e2621";
 const POPUP_PATCH_MIX = 0.35; // share of the blurred content in a patch (rest is tone)
 const FILTER_ID = "ember-frost";
+const STICKY_HEADER_BG = "rgba(26, 22, 20, 0.85)"; // pinned diff file headers
 const POPUP_FILTER = `url(#${FILTER_ID})`;
 const FROST_ID = "ember-glass-frost"; // the div holding the SVG
 // Mask threshold: empty glass has alpha GLASS_ALPHA; content pushes it toward 1.
@@ -112,6 +114,14 @@ ${S} {
   --colors-primary-foreground: ${ON_ACCENT};
   background-color: ${GLASS_TINT} !important;
 }
+/* Callout buttons (update available, worktree scripts, ...; testIDs
+   "<name>-callout[-<id>]-action-<n>"): the primary label uses surface0, the
+   clear background, on a solid parchment button, so it vanishes. The secondary
+   button's background is transparent, not surface0, so it's unaffected. */
+${S} [data-testid*="-callout"][data-testid*="-action-"] { --colors-surface0: ${ON_ACCENT}; }
+/* Question form submit (copper): its label gets accentForeground as a resolved
+   value (the clear background), not a variable, so set the color directly. */
+${S} [data-testid="question-form-primary-action"] [dir="auto"] { color: ${ON_ACCENT} !important; }
 /* Icons on accent buttons get that color as a resolved value (stroke="#1a161400"), not a variable. */
 ${S} [stroke="${colors.background}"] { stroke: ${ON_ACCENT} !important; }
 ${S} :is(button, [role="button"]) [fill="${colors.background}"] { fill: ${ON_ACCENT} !important; }
@@ -128,7 +138,7 @@ ${S} [style*="background-color: rgb(242, 242, 242)"] { background-color: transpa
 /* Message input box: no extra layer, but keep its border (only elements that already have a border width show it). */
 ${S} [data-testid="message-input-root"] div:has(textarea) { background-color: transparent !important; border-color: ${EDGE} !important; }
 /* User prompt bubble: Paseo paints it with the border color, which is hidden. */
-${S} [data-testid="user-message"] > div > div:not([data-testid]):first-child { background-color: ${EDGE} !important; }
+${S} [data-testid="user-message"] > div > div:not([data-testid]):first-child { background-color: ${USER_BUBBLE} !important; }
 /* ---- Popups ----
    Frosted popups. Those in popup layers (menus, tooltips, modals) are found
    and tagged by frostPopups() below. Ones that render inside the app tree are
@@ -182,6 +192,14 @@ ${S} [${SCRIM}] { background-color: transparent !important; }
    tooltips (#overlay-root) keep theirs: they wait for the fade-out to finish
    before unmounting, so without it old tooltips never go away. */
 ${S} ${MODAL_LAYER} > div { animation: none !important; }
+/* Diff view file headers pin to the top while their file scrolls under them.
+   Paseo draws them on a canvas with a near-clear fill, so the lines below show
+   through. Frost them, with a stronger tint than popups: code scrolls right
+   under them, and a lighter tint leaves it readable. */
+${S} [data-testid^="git-diff-sticky-header-"] {
+  background-color: ${STICKY_HEADER_BG} !important;
+  backdrop-filter: ${POPUP_FILTER} !important;
+}
 /* ---- end popups ---- */
 /* Buttons (and split-button groups like Merge PR) keep their borders by re-scoping Paseo's border color variables. */
 ${S} :is(
@@ -378,6 +396,37 @@ function liftWindowButtons(): () => void {
   };
 }
 
+/**
+ * Clear the diff canvas before Paseo scrolls it.
+ *
+ * The diff view is drawn on a canvas. To scroll, Paseo copies the canvas onto
+ * itself shifted (from a scratch copy) and repaints only the newly exposed
+ * strip. The copy is drawn over the old frame without clearing it, which is
+ * fine when every pixel is opaque, but with the clear glass background the old
+ * frame shows through and lines pile up. Clearing the destination first makes
+ * the copy a true replace. Only that call shape is affected: a full-width,
+ * same-size canvas-to-canvas copy at x = 0.
+ */
+function clearCanvasScrollCopies(): () => void {
+  const proto = win.CanvasRenderingContext2D?.prototype;
+  if (!proto) return () => {};
+  const original = proto.drawImage;
+  proto.drawImage = function (this: any, image: any, ...rest: number[]) {
+    if (rest.length === 8 && image instanceof win.HTMLCanvasElement) {
+      const [sx, , sw, , dx, dy, dw, dh] = rest;
+      const canvas = this.canvas;
+      if (sx === 0 && dx === 0 && sw === canvas.width && dw === canvas.width &&
+          image.width === canvas.width && image.height === canvas.height) {
+        this.clearRect(dx, dy, dw, dh);
+      }
+    }
+    return original.call(this, image, ...rest);
+  };
+  return () => {
+    proto.drawImage = original;
+  };
+}
+
 export default function contribute(client: PluginClientContext) {
   client.addTheme({
     id: "ember-glass",
@@ -398,9 +447,11 @@ export default function contribute(client: PluginClientContext) {
   doc.documentElement.classList.add("ember-glass");
   const stopPopups = frostPopups();
   const stopLift = liftWindowButtons();
+  const stopCanvasFix = clearCanvasScrollCopies();
   return () => {
     stopPopups();
     stopLift();
+    stopCanvasFix();
     style.remove();
     frost.remove();
     doc.documentElement.classList.remove("ember-glass");
