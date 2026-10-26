@@ -66,7 +66,10 @@ const POPUP_MASK_FEATHER = 8;
 const POPUP_PATCH_TONE = "#2e2621";
 const POPUP_PATCH_MIX = 0.35; // share of the blurred content in a patch (rest is tone)
 const FILTER_ID = "ember-frost";
-const STICKY_HEADER_BG = "rgba(26, 22, 20, 0.85)"; // pinned diff file headers
+const STICKY_HEADER_BG = "rgba(20, 21, 22, 0.93)"; // pinned diff file headers (under DIFF_HEADER)
+const DIFF_HEADER = `${colors.foreground}10`; // diff file header rows (6% text color)
+const DIFF_HEADER_ACTIVE = `${colors.foreground}1c`; // header of the selected file (11%)
+const DIFF_HEADER_HEIGHT = 30; // Paseo's DIFF_FILE_HEADER_HEIGHT
 const POPUP_FILTER = `url(#${FILTER_ID})`;
 const FROST_ID = "ember-glass-frost"; // the div holding the SVG
 // Mask threshold: empty glass has alpha GLASS_ALPHA; content pushes it toward 1.
@@ -125,6 +128,9 @@ ${S} [data-testid="question-form-primary-action"] [dir="auto"] { color: ${ON_ACC
 /* Icons on accent buttons get that color as a resolved value (stroke="#1a161400"), not a variable. */
 ${S} [stroke="${colors.background}"] { stroke: ${ON_ACCENT} !important; }
 ${S} :is(button, [role="button"]) [fill="${colors.background}"] { fill: ${ON_ACCENT} !important; }
+/* Send button while loading (new worktree, app start): the spinner sets that color as an
+   inline style, which Chrome serializes as rgba(26, 22, 20, 0). */
+${S} [role="progressbar"] circle[style*="rgba(26, 22, 20, 0)"] { stroke: ${ON_ACCENT} !important; }
 /* Composer stop button (shown while an agent runs): hollow ring with a hollow
    square inside, instead of Paseo's filled bright-red circle with a white square. */
 ${S} [role="button"]:is([aria-label="Stop agent"], [aria-label="Canceling agent"], :has(> svg.lucide-square[fill="white"])) {
@@ -192,15 +198,13 @@ ${S} [${SCRIM}] { background-color: transparent !important; }
    tooltips (#overlay-root) keep theirs: they wait for the fade-out to finish
    before unmounting, so without it old tooltips never go away. */
 ${S} ${MODAL_LAYER} > div { animation: none !important; }
+/* ---- end popups ---- */
 /* Diff view file headers pin to the top while their file scrolls under them.
    Paseo draws them on a canvas with a near-clear fill, so the lines below show
-   through. Frost them, with a stronger tint than popups: code scrolls right
-   under them, and a lighter tint leaves it readable. */
-${S} [data-testid^="git-diff-sticky-header-"] {
-  background-color: ${STICKY_HEADER_BG} !important;
-  backdrop-filter: ${POPUP_FILTER} !important;
-}
-/* ---- end popups ---- */
+   through. Give them a near-opaque dark that matches the glass (fixDiffCanvas
+   paints the header tint on top). No frost: its warm patch tone made pinned
+   headers browner than the rest, and they sit over the first headers even unscrolled. */
+${S} [data-testid^="git-diff-sticky-header-"] { background-color: ${STICKY_HEADER_BG} !important; }
 /* Buttons (and split-button groups like Merge PR) keep their borders by re-scoping Paseo's border color variables. */
 ${S} :is(
   [role="button"],
@@ -397,7 +401,7 @@ function liftWindowButtons(): () => void {
 }
 
 /**
- * Clear the diff canvas before Paseo scrolls it.
+ * Fix the diff canvas: clear before Paseo scrolls it, and tint file headers.
  *
  * The diff view is drawn on a canvas. To scroll, Paseo copies the canvas onto
  * itself shifted (from a scratch copy) and repaints only the newly exposed
@@ -406,10 +410,36 @@ function liftWindowButtons(): () => void {
  * frame shows through and lines pile up. Clearing the destination first makes
  * the copy a true replace. Only that call shape is affected: a full-width,
  * same-size canvas-to-canvas copy at x = 0.
+ *
+ * File headers get their own tint. Paseo fills them with surface0 (surface1
+ * for the selected file), which this theme makes clear or near-clear, so they
+ * blend into the background. The canvas gets those colors as plain values, so
+ * CSS can't reach them; full-width, header-height fills on diff canvases in
+ * those colors are swapped for DIFF_HEADER / DIFF_HEADER_ACTIVE.
  */
-function clearCanvasScrollCopies(): () => void {
+function fixDiffCanvas(): () => void {
   const proto = win.CanvasRenderingContext2D?.prototype;
   if (!proto) return () => {};
+  // Read the colors back the way the canvas reports them (e.g. "rgba(26, 22, 20, 0)").
+  const probe = win.document.createElement("canvas").getContext("2d");
+  const normalize = (color: string) => ((probe.fillStyle = color), probe.fillStyle);
+  const headerColors = new Map([
+    [normalize(colors.background), DIFF_HEADER],
+    [normalize(colors.raised), DIFF_HEADER_ACTIVE],
+  ]);
+  const isDiffCanvas = (canvas: any) => canvas?.dataset?.testid?.startsWith("git-diff-");
+  const originalFillRect = proto.fillRect;
+  proto.fillRect = function (this: any, x: number, y: number, w: number, h: number) {
+    const tint = x === 0 && h === DIFF_HEADER_HEIGHT && headerColors.get(this.fillStyle);
+    if (tint && isDiffCanvas(this.canvas)) {
+      const previous = this.fillStyle;
+      this.fillStyle = tint;
+      originalFillRect.call(this, x, y, w, h);
+      this.fillStyle = previous;
+      return;
+    }
+    return originalFillRect.call(this, x, y, w, h);
+  };
   const original = proto.drawImage;
   proto.drawImage = function (this: any, image: any, ...rest: number[]) {
     if (rest.length === 8 && image instanceof win.HTMLCanvasElement) {
@@ -424,6 +454,7 @@ function clearCanvasScrollCopies(): () => void {
   };
   return () => {
     proto.drawImage = original;
+    proto.fillRect = originalFillRect;
   };
 }
 
@@ -447,7 +478,7 @@ export default function contribute(client: PluginClientContext) {
   doc.documentElement.classList.add("ember-glass");
   const stopPopups = frostPopups();
   const stopLift = liftWindowButtons();
-  const stopCanvasFix = clearCanvasScrollCopies();
+  const stopCanvasFix = fixDiffCanvas();
   return () => {
     stopPopups();
     stopLift();

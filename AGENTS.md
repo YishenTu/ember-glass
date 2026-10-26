@@ -48,7 +48,7 @@ Patch changes (`apply`/`restore`) need a Paseo restart (Cmd+Q, reopen). Ask the 
 - Paseo sets `* { scrollbar-width: thin }`, which wins over `::-webkit-scrollbar`; reset it first.
 - Hover "scrims" (SVG gradients behind sidebar `⋯` / tab `×`) assume opaque panels and look like smudges on glass; they're hidden.
 - The DevTools screenshot (`Page.captureScreenshot`) matches the real screen for blur checks; `screencapture -R` works too but only if Paseo is frontmost.
-- **The diff view is a canvas** (`git-diff-canvas`). Paseo scrolls it by drawing a shifted copy of itself without clearing, which only works on opaque pixels; `clearCanvasScrollCopies()` clears the destination first. Its pinned file headers (`git-diff-sticky-header-*`) are separate canvases, frosted in CSS.
+- **The diff view is a canvas** (`git-diff-canvas`). Paseo scrolls it by drawing a shifted copy of itself without clearing, which only works on opaque pixels; `fixDiffCanvas()` clears the destination first. It also recolors file header fills (Paseo passes them surface0/surface1 as plain values, which CSS can't reach). Pinned file headers (`git-diff-sticky-header-*`) are separate canvases with a near-opaque CSS background (not frosted: the frost's warm tone made them browner than the other headers).
 - Your own test elements appended to `<body>` get tagged by `frostPopups()` if they're rounded — set inline `!important` styles to bypass.
 
 ## App patch
