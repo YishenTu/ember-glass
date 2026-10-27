@@ -35,6 +35,7 @@ const TOP_GAP = 6;
 const TRAILING_FADE = [22, 38];
 // Tab close (x) buttons: "workspace-agent-close-<id>", "workspace-pull_request-close", ...
 const TAB_CLOSE = `button:is([data-testid^="workspace-"][data-testid*="-close-"], [data-testid^="workspace-"][data-testid$="-close"])`;
+const SWITCH_KNOB = "#ffffff"; // switch knob when on (Paseo's off knob is white too)
 const ON_ACCENT = "#1a1614"; // icons/text on copper buttons (Paseo derives it from the clear background)
 // Stop button while an agent runs: hollow ring + square, same color as the composer controls (model, effort, mode).
 const STOP_COLOR = colors.mutedForeground;
@@ -223,6 +224,10 @@ ${S} [data-testid="tool-call-badge"] > button + div { border-color: ${EDGE} !imp
 /* Switch (toggle) track when off: Paseo paints it with the clear border color,
    leaving only the white knob. */
 ${S} [role="switch"][aria-checked="false"] > div > div { background-color: ${EDGE} !important; }
+/* Switch knob when on: Paseo uses accentForeground (derived from the clear
+   background) as a resolved value, so the knob vanished into the copper track.
+   Make it white like the off knob. */
+${S} [role="switch"][aria-checked="true"] > div > div > div { background-color: ${SWITCH_KNOB} !important; }
 /* Context window meter in the composer: its ring track (first circle) uses the hidden border color. */
 ${S} [data-testid="context-window-meter"] svg circle:first-of-type { stroke: ${EDGE} !important; }
 /* Slightly heavier text: macOS default smoothing (Paseo forces the thinner
