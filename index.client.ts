@@ -140,6 +140,14 @@ ${S} [role="button"]:is([aria-label="Stop agent"], [aria-label="Canceling agent"
   transform: scale(0.8); /* 20% smaller, layout unchanged */
 }
 ${S} [role="button"] > svg.lucide-square[fill="white"], ${S} [role="button"] > svg.lucide-square[fill="white"] * { stroke: ${STOP_COLOR} !important; fill: none !important; }
+/* New workspace "create" button (return arrow): same hollow look as the stop button. */
+${S} [data-testid="workspace-create-submit"] {
+  background-color: transparent !important;
+  box-shadow: inset 0 0 0 1.5px ${STOP_COLOR};
+  transform: scale(0.8);
+}
+/* Arrow and loading spinner; [role] lifts it over the spinner rule above. */
+${S} [role="button"][data-testid="workspace-create-submit"] :is(svg, svg *) { stroke: ${STOP_COLOR} !important; }
 /* React Navigation paints an opaque light card behind every screen. */
 ${S} [style*="background-color: rgb(242, 242, 242)"] { background-color: transparent !important; }
 /* Message input box: no extra layer, but keep its border (only elements that already have a border width show it). */
